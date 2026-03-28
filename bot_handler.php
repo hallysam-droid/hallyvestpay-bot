@@ -5,7 +5,6 @@ $adminId = 7834431555;
 
 $content = file_get_contents("php://input");
 $update = json_decode($content, true);
-
 if (!$update) { exit("Bot Active"); }
 
 @include 'db_config.php'; 
@@ -18,69 +17,74 @@ if ($message) {
     $text = $message['text'] ?? "";
     $telegramName = $message['from']['first_name'] ?? "User";
 
-    // 🚀 UPDATED REGEX: To catch /start dep_500_u1_User
-    // Format: /start dep_{amount}_u{id}_{username}
+    // 🚀 START FLOW: Catch /start dep_{amount}_u{id}_{username}
     if (preg_match('/\/start dep_(\d+)_u(\d+)_?(.+)?/', $text, $matches)) {
         $amount = (float)$matches[1];
         $webUserId = $matches[2];
-        $webUsername = $matches[3] ?? "Hallyvest User"; // Fallback if name is missing
+        $webUsername = urldecode($matches[3] ?? "Hallyvest User");
         
         if (isset($conn)) {
-            $query = "INSERT INTO deposits (user_id, amount, status) VALUES ($1, $2, 'pending')";
-            pg_query_params($conn, $query, array($webUserId, $amount));
+            pg_query_params($conn, "INSERT INTO deposits (user_id, amount, status) VALUES ($1, $2, 'pending')", array($webUserId, $amount));
         }
         
-        $msg = "🤝 <b>Hallyvestpay Deposit</b>\n\n";
-        $msg .= "👤 Account Name: <b>" . htmlspecialchars($webUsername) . "</b>\n";
-        $msg .= "🆔 Website ID: <b>#" . $webUserId . "</b>\n";
+        $msg = "🤝 <b>Hallyvestpay Deposit Portal</b>\n\n";
+        $msg .= "👤 Name: <b>$webUsername</b>\n";
+        $msg .= "🆔 Web ID: <b>#$webUserId</b>\n";
         $msg .= "💰 Amount: <b>₦" . number_format($amount, 2) . "</b>\n\n";
-        $msg .= "Select your preferred payment method below:";
+        $msg .= "<b>Choose your payment method:</b>";
 
         $keyboard = ['inline_keyboard' => [
-            [['text' => "💳 Option 1: Pay via Card", 'callback_data' => "pay_card_$amount"]],
-            [['text' => "🏦 Option 2: Bank Transfer (Auto)", 'callback_data' => "pay_auto_$amount"]],
-            [['text' => "📝 Option 3: Fill Manually", 'callback_data' => "pay_man_{$amount}_{$webUserId}"]]
+            [['text' => "💳 1. Pay via Card (Fast)", 'callback_data' => "p_card_$amount"]],
+            [['text' => "🏦 2. Bank Transfer (Auto)", 'callback_data' => "p_auto_$amount"]],
+            [['text' => "📝 3. Bank Transfer (Manual)", 'callback_data' => "p_man_{$amount}_{$webUserId}"]]
         ]];
         sendBotMessage($chatId, $msg, $keyboard, $token);
     } 
     
-    // 🚀 RECEIPT UPLOAD
+    // 📸 RECEIPT UPLOAD HANDLER
     elseif (isset($message['photo'])) {
         if (isset($conn)) {
-            $sql = "UPDATE deposits SET status = 'processing' 
-                    WHERE id = (SELECT id FROM deposits WHERE status = 'pending' ORDER BY created_at DESC LIMIT 1) 
-                    RETURNING amount, user_id";
-            $res = pg_query($conn, $sql);
+            $res = pg_query($conn, "UPDATE deposits SET status = 'processing' WHERE id = (SELECT id FROM deposits WHERE status = 'pending' ORDER BY created_at DESC LIMIT 1) RETURNING amount, user_id");
             $row = pg_fetch_assoc($res);
-
             if ($row) {
-                $amt = $row['amount'];
-                $uid = $row['user_id'];
-                sendBotMessage($chatId, "✅ <b>Receipt Received!</b>\nAdmin is reviewing your ₦" . number_format($amt) . " deposit.", null, $token);
+                sendBotMessage($chatId, "✅ <b>Receipt Received!</b>\nYour payment of ₦" . number_format($row['amount']) . " is being verified by Admin.", null, $token);
                 
-                $adminMsg = "🔔 <b>NEW RECEIPT!</b>\n👤 User: $telegramName\n🆔 Web ID: #$uid\n💵 Amount: ₦" . number_format($amt, 2);
+                $adminMsg = "🔔 <b>DEPOSIT ALERT</b>\n🆔 ID: #".$row['user_id']."\n💵 Amt: ₦".number_format($row['amount'], 2);
                 $photoId = end($message['photo'])['file_id'];
-                file_get_contents("https://api.telegram.org/bot$token/sendPhoto?chat_id=$adminId&photo=$photoId&caption=" . urlencode($adminMsg) . "&parse_mode=HTML");
+                file_get_contents("https://api.telegram.org/bot$token/sendPhoto?chat_id=$adminId&photo=$photoId&caption=".urlencode($adminMsg)."&parse_mode=HTML");
             }
         }
     }
 }
 
-// CALLBACKS
+// 🔘 BUTTON ACTIONS
 if ($callback) {
     $cb_chatId = $callback['message']['chat']['id'];
     $cb_data = $callback['data'];
-    $cb_id = $callback['id'];
-
-    if (strpos($cb_data, "pay_man_") === 0) {
-        $parts = explode('_', $cb_data);
-        $amount = $parts[2];
-        $msg = "📝 <b>Manual Transfer Details</b>\n\nPay: <b>₦" . number_format($amount, 2) . "</b>\nBank: <b>Wema Bank</b>\nAcc: <b>1234567890</b>\n\nSend receipt photo here.";
+    
+    // Logic for Card & Auto (Pointing to your Moniepoint for now)
+    if (strpos($cb_data, "p_card_") === 0 || strpos($cb_data, "p_auto_") === 0) {
+        $amt = explode('_', $cb_data)[2];
+        $msg = "⚡ <b>INSTANT PAYMENT</b>\n\nTransfer <b>₦" . number_format($amt, 2) . "</b> to:\n\n";
+        $msg .= "🏦 Bank: <b>Moniepoint</b>\n";
+        $msg .= "🔢 Acc: <b>5068656425</b>\n";
+        $msg .= "👤 Name: <b>Adebayo Samuel</b>\n\n";
+        $msg .= "✅ <i>Your balance will update immediately after we receive the alert.</i>";
         sendBotMessage($cb_chatId, $msg, null, $token);
-    } elseif (strpos($cb_data, "pay_card_") === 0 || strpos($cb_data, "pay_auto_") === 0) {
-        sendBotMessage($cb_chatId, "🚧 This payment gateway is being initialized. Please use <b>Manual Transfer</b> for now.", null, $token);
+    } 
+
+    // Logic for Manual
+    elseif (strpos($cb_data, "p_man_") === 0) {
+        $parts = explode('_', $cb_data);
+        $amt = $parts[2];
+        $msg = "📝 <b>MANUAL TRANSFER</b>\n\nPay <b>₦" . number_format($amt, 2) . "</b> to:\n\n";
+        $msg .= "🏦 Bank: <b>Moniepoint</b>\n";
+        $msg .= "🔢 Acc: <b>5068656425</b>\n";
+        $msg .= "👤 Name: <b>Adebayo Samuel</b>\n\n";
+        $msg .= "👇 <b>Upload your receipt below for verification.</b>";
+        sendBotMessage($cb_chatId, $msg, null, $token);
     }
-    file_get_contents("https://api.telegram.org/bot$token/answerCallbackQuery?callback_query_id=$cb_id");
+    file_get_contents("https://api.telegram.org/bot$token/answerCallbackQuery?callback_query_id=".$callback['id']);
 }
 
 function sendBotMessage($chatId, $text, $keyboard, $token) {
