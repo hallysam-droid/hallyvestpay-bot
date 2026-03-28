@@ -1,6 +1,6 @@
 <?php
 // 1. Get the DB_URL from the Environment Variable we set in Step 2
-$db_url = $_ENV("DB_URL");
+$db_url = getenv("DB_URL") ?: $_ENV["DB_URL"];
 
 if (!$db_url) {
     die("Error: DB_URL environment variable is missing.");
