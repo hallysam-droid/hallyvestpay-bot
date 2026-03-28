@@ -1,5 +1,8 @@
 FROM php:8.2-cli
 
+# Install MySQL extension
+RUN docker-php-ext-install mysqli
+
 WORKDIR /app
 
 COPY . /app
