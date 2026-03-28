@@ -4,7 +4,7 @@ header("Access-Control-Allow-Origin: *");
 header("Content-Type: application/json");
 ob_start(); // Prevent accidental whitespace from breaking the response
 
-include 'db_config.php';
+// include 'db_config.php';
 
 // 2. RECEIVE TELEGRAM DATA
 $content = file_get_contents("php://input");
